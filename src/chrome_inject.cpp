@@ -1,7 +1,3 @@
-// chrome_inject.cpp
-// v0.10.0 (c) Alexander 'xaitax' Hagenah
-// Licensed under the MIT License.
-
 #include <Windows.h>
 #include <tlhelp32.h>
 #include <fstream>
@@ -42,14 +38,6 @@ typedef LONG NTSTATUS;
 namespace fs = std::filesystem;
 static bool verbose = false;
 static std::wstring g_customOutputPathArg;
-
-// Decryption function (from your earlier XOR-based encryption)
-void AES256_Decrypt(unsigned char* data, unsigned long size, const unsigned char* key, const unsigned char* iv) {
-    // Placeholder XOR (matches previous work)
-    for (unsigned long i = 0; i < size; i++) {
-        data[i] ^= key[i % 32];
-    }
-}
 
 std::string WStringToUtf8(std::wstring_view w_sv)
 {
@@ -344,19 +332,10 @@ std::vector<BYTE> GetPayloadDllData()
         return {};
     }
 
-    // Decrypt DLL data
-    std::vector<BYTE> decryptedData(dllData, dllData + dllSize);
-    const unsigned char key[32] = {
-        0x4a, 0x7b, 0x2e, 0x9c, 0x15, 0x63, 0xf8, 0xd2,
-        0xa1, 0x3c, 0x8e, 0x57, 0xb0, 0x29, 0x71, 0xe4,
-        0x6d, 0x12, 0x95, 0x38, 0xc7, 0x0a, 0x83, 0x4f,
-        0x1b, 0x66, 0xd9, 0x24, 0x8c, 0x5e, 0xf3, 0x77
-    };
-    const unsigned char iv[16] = { 0 };
-    AES256_Decrypt(decryptedData.data(), decryptedData.size(), key, iv);
-
-    debug("GetPayloadDllData: Loaded and decrypted DLL from resource. Size: " + std::to_string(dllSize) + " bytes");
-    return decryptedData;
+    // Return raw DLL data without encryption
+    std::vector<BYTE> dllBuffer(dllData, dllData + dllSize);
+    debug("GetPayloadDllData: Loaded DLL from resource. Size: " + std::to_string(dllSize) + " bytes");
+    return dllBuffer;
 }
 
 DWORD RvaToOffset_Injector(DWORD dwRva, PIMAGE_NT_HEADERS64 pNtHeaders, const void* lpFileBase)
