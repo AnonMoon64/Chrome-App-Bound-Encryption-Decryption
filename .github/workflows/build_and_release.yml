@@ -18,10 +18,10 @@ jobs:
         include:
           - architecture: x64
             platform_toolset_arg: x64
-            output_suffix: x64 #
+            output_suffix: x64
             final_injector_name: chrome_inject_x64.exe
           - architecture: arm64
-            platform_toolset_arg: x64_arm64 
+            platform_toolset_arg: x64_arm64
             output_suffix: arm64
             final_injector_name: chrome_inject_arm64.exe
 
@@ -29,7 +29,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Add MSVC to PATH and set up environment variables
+      - name: Add MSVC to PATH
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.platform_toolset_arg }}
@@ -40,21 +40,29 @@ jobs:
           echo "Compiling SQLite for ${{ matrix.architecture }}"
           cl /nologo /W3 /O2 /MT /c libs\sqlite\sqlite3.c /Fo"sqlite3_${{ matrix.output_suffix }}.obj"
           lib /nologo /OUT:"sqlite3_${{ matrix.output_suffix }}.lib" "sqlite3_${{ matrix.output_suffix }}.obj"
-          echo "SQLite compilation finished for ${{ matrix.architecture }}"
+          echo "SQLite compilation finished"
 
       - name: Compile chrome_decrypt.dll (${{ matrix.architecture }})
         shell: cmd
         run: |
           echo "Compiling chrome_decrypt.dll for ${{ matrix.architecture }}"
-          cl /EHsc /std:c++17 /LD /O2 /MT /Ilibs\sqlite src\chrome_decrypt.cpp src\reflective_loader.c "sqlite3_${{ matrix.output_suffix }}.lib" bcrypt.lib ole32.lib oleaut32.lib shell32.lib version.lib comsuppw.lib /link /OUT:"chrome_decrypt.dll"
-          echo "chrome_decrypt.dll compilation finished for ${{ matrix.architecture }}"
+          cl /EHsc /std:c++17 /LD /O2 /MT /Ilibs\sqlite src\chrome_decrypt.cpp src\reflective_loader.c "sqlite3_${{ matrix.output_suffix }}.lib" bcrypt.lib ole32.lib oleaut32.lib shell32.lib version.lib comsuppw.lib /link /OUT:"chrome_decrypt_${{ matrix.output_suffix }}.dll"
+          echo "chrome_decrypt.dll compilation finished"
+
+      - name: Compile resource script
+        shell: cmd
+        run: |
+          echo "Compiling resource.rc"
+          echo IDR_DLL BINARY "chrome_decrypt_${{ matrix.output_suffix }}.dll" > resource.rc
+          rc resource.rc
+          echo "Resource compilation finished"
 
       - name: Compile chrome_inject.exe (${{ matrix.architecture }})
         shell: cmd
         run: |
           echo "Compiling chrome_inject.exe for ${{ matrix.architecture }}"
-          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib /link /OUT:"${{ matrix.final_injector_name }}"
-          echo "chrome_inject.exe compilation finished for ${{ matrix.architecture }}"
+          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib resource.res /link /OUT:"${{ matrix.final_injector_name }}"
+          echo "chrome_inject.exe compilation finished"
 
       - name: Create Artifacts Directory
         run: mkdir staging
@@ -62,9 +70,9 @@ jobs:
       - name: Move artifacts to staging
         shell: cmd
         run: |
-          move "chrome_decrypt.dll" staging\
+          if not exist "${{ matrix.final_injector_name }}" exit 1
           move "${{ matrix.final_injector_name }}" staging\
-          echo "Moved artifacts to staging for ${{ matrix.architecture }}"
+          echo "Moved ${{ matrix.final_injector_name }} to staging"
 
       - name: Upload build artifacts (${{ matrix.architecture }})
         uses: actions/upload-artifact@v4
@@ -78,11 +86,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
-    outputs:
-      release_url: ${{ steps.create_release.outputs.html_url }}
-
     steps:
-      - name: Checkout repository 
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Download x64 binaries
@@ -96,7 +101,7 @@ jobs:
         with:
           name: chrome-decryptor-binaries-arm64
           path: release_assets/arm64
-      
+
       - name: List downloaded files
         run: |
           echo "--- Listing contents of release_assets ---"
@@ -104,38 +109,28 @@ jobs:
           echo "------------------------------------------"
 
       - name: Create ZIP archives
-        id: zip_packages 
+        id: zip_packages
         shell: bash
         run: |
-          VERSION_TAG=${{ github.ref_name }} 
-          VERSION_NUM=${VERSION_TAG#v}     
-          
+          VERSION_TAG=${{ github.ref_name }}
+          VERSION_NUM=${VERSION_TAG#v}
           mkdir -p release_packages
-          
           X64_ZIP_NAME="chrome-decryptor-${VERSION_NUM}-x64.zip"
           ARM64_ZIP_NAME="chrome-decryptor-${VERSION_NUM}-arm64.zip"
-          
-          echo "Zipping x64 assets to release_packages/${X64_ZIP_NAME}..."
-          if [ -z "$(ls -A release_assets/x64)" ]; then
-             echo "Error: x64 release_assets directory is empty or files not found!"
-             ls -l release_assets/ 
-             exit 1
+          echo "Zipping x64 assets..."
+          if [ ! -f "release_assets/x64/chrome_inject_x64.exe" ]; then
+            echo "Error: x64 binary missing!"
+            ls -l release_assets/x64
+            exit 1
           fi
-          # Zip contents of release_assets/x64: chrome_inject_x64.exe and chrome_decrypt.dll
-          (cd release_assets/x64 && zip "../../release_packages/${X64_ZIP_NAME}" chrome_inject_x64.exe chrome_decrypt.dll)
-          
-          echo "Zipping arm64 assets to release_packages/${ARM64_ZIP_NAME}..."
-          if [ -z "$(ls -A release_assets/arm64)" ]; then
-             echo "Error: arm64 release_assets directory is empty or files not found!"
-             ls -l release_assets/ 
-             exit 1
+          (cd release_assets/x64 && zip "../../release_packages/${X64_ZIP_NAME}" chrome_inject_x64.exe)
+          echo "Zipping arm64 assets..."
+          if [ ! -f "release_assets/arm64/chrome_inject_arm64.exe" ]; then
+            echo "Error: arm64 binary missing!"
+            ls -l release_assets/arm64
+            exit 1
           fi
-          # Zip contents of release_assets/arm64: chrome_inject_arm64.exe and chrome_decrypt.dll
-          (cd release_assets/arm64 && zip "../../release_packages/${ARM64_ZIP_NAME}" chrome_inject_arm64.exe chrome_decrypt.dll)
-          
-          echo "Created ZIP packages:"
-          ls -l release_packages
-
+          (cd release_assets/arm64 && zip "../../release_packages/${ARM64_ZIP_NAME}" chrome_inject_arm64.exe)
           echo "x64_zip_path=release_packages/${X64_ZIP_NAME}" >> $GITHUB_OUTPUT
           echo "arm64_zip_path=release_packages/${ARM64_ZIP_NAME}" >> $GITHUB_OUTPUT
 
@@ -151,11 +146,10 @@ jobs:
             Automated release for version ${{ github.ref_name }}.
             Contains x64 and ARM64 binaries.
             Each ZIP includes:
-            - chrome_inject_ARCH.exe (e.g., chrome_inject_x64.exe)
-            - chrome_decrypt.dll (architecture-specific)
+            - chrome_inject_ARCH.exe (e.g., chrome_inject_x64.exe) with embedded chrome_decrypt.dll
           draft: false
           prerelease: false
-          files: | 
+          files: |
             ${{ steps.zip_packages.outputs.x64_zip_path }}
             ${{ steps.zip_packages.outputs.arm64_zip_path }}
           fail_on_unmatched_files: true
