@@ -27,7 +27,7 @@
 
 const WCHAR *COMPLETION_EVENT_NAME_INJECTOR = L"Global\\ChromeDecryptWorkDoneEvent";
 const char *SESSION_CONFIG_FILE_NAME_INJECTOR = "chrome_decrypt_session.cfg";
-#define IDR_DLL 101 // Resource ID for embedded DLL
+#define CHROME_DECRYPT_DLL "CHROME_DECRYPT_DLL" // Resource name
 
 constexpr DWORD DLL_COMPLETION_TIMEOUT_MS = 60000;
 constexpr DWORD BROWSER_INIT_WAIT_MS = 3000;
@@ -315,22 +315,22 @@ std::optional<DWORD> GetProcessIdByName(const std::wstring &procName)
 
 std::vector<BYTE> GetPayloadDllData()
 {
-    HRSRC hRes = FindResourceA(NULL, MAKEINTRESOURCEA(IDR_DLL), "BINARY");
+    HRSRC hRes = FindResourceA(NULL, CHROME_DECRYPT_DLL, RT_RCDATA);
     if (!hRes) {
-        debug("GetPayloadDllData: FindResourceA failed. Error: " + std::to_string(GetLastError()));
+        print_status("[-]", "FindResourceA failed. Error: " + std::to_string(GetLastError()));
         return {};
     }
 
     HGLOBAL hResData = LoadResource(NULL, hRes);
     if (!hResData) {
-        debug("GetPayloadDllData: LoadResource failed. Error: " + std::to_string(GetLastError()));
+        print_status("[-]", "LoadResource failed. Error: " + std::to_string(GetLastError()));
         return {};
     }
 
     BYTE* dllData = (BYTE*)LockResource(hResData);
     SIZE_T dllSize = SizeofResource(NULL, hRes);
     if (!dllData || dllSize == 0) {
-        debug("GetPayloadDllData: LockResource failed or size is 0. Error: " + std::to_string(GetLastError()));
+        print_status("[-]", "LockResource failed or size is 0. Error: " + std::to_string(GetLastError()));
         return {};
     }
 
