@@ -1,5 +1,4 @@
 // chrome_inject.cpp
-// v0.10.0 (c) Alexander 'xaitax' Hagenah
 // Licensed under the MIT License.
 
 #include <Windows.h>
@@ -46,11 +45,11 @@ std::string WStringToUtf8(std::wstring_view w_sv)
 {
     if (w_sv.empty())
         return std::string();
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, w_sv.data(), static_cast<int>(w_sv.length()), nullptr, 0, nullptr, nullptr);
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, w_sv.data(), static_cast<int>(w_sv.size()), nullptr, 0, nullptr, nullptr);
     if (size_needed == 0)
         return "";
     std::string utf8_str(size_needed, '\0');
-    if (WideCharToMultiByte(CP_UTF8, 0, w_sv.data(), static_cast<int>(w_sv.length()), &utf8_str[0], size_needed, nullptr, nullptr) == 0)
+    if (WideCharToMultiByte(CP_UTF8, 0, w_sv.data(), static_cast<int>(w_sv.size()), &utf8_str[0], size_needed, nullptr, nullptr) == 0)
         return "";
     return utf8_str;
 }
