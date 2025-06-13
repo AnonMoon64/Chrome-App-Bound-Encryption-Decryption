@@ -22,25 +22,35 @@ jobs:
         with:
           arch: x64
 
+      - name: Clear cache
+        run: echo "CACHE_CLEAR=$(date)" >> $GITHUB_ENV
+
       - name: Compile SQLite (x64)
         shell: cmd
         run: |
           echo "Compiling SQLite for x64"
+          dir libs\sqlite
           cl /nologo /W3 /O2 /MT /c libs\sqlite\sqlite3.c /Fo"sqlite3_x64.obj"
           lib /nologo /OUT:"sqlite3_x64.lib" "sqlite3_x64.obj"
-          if not exist "sqlite3_x64.lib" exit 1
+          if not exist "sqlite3_x64.lib" (
+            echo "Error: sqlite3_x64.lib not found!"
+            dir .
+            exit 1
+          )
           echo "SQLite compilation finished"
 
       - name: Compile chrome_decrypt.dll (x64)
         shell: cmd
         run: |
           echo "Compiling chrome_decrypt.dll for x64"
+          dir src
           cl /EHsc /std:c++17 /LD /O2 /MT /Ilibs\sqlite src\chrome_decrypt.cpp src\reflective_loader.c "sqlite3_x64.lib" bcrypt.lib ole32.lib oleaut32.lib shell32.lib version.lib comsuppw.lib /link /OUT:"chrome_decrypt_x64.dll"
           if not exist "chrome_decrypt_x64.dll" (
             echo "Error: chrome_decrypt_x64.dll not found!"
             dir .
             exit 1
           )
+          dir chrome_decrypt_x64.dll
           echo "chrome_decrypt.dll compilation finished"
 
       - name: Compile resource script
@@ -55,18 +65,21 @@ jobs:
             dir .
             exit 1
           )
+          dir resource.res
           echo "Resource compilation finished"
 
       - name: Compile chrome_inject.exe (x64)
         shell: cmd
         run: |
           echo "Compiling chrome_inject.exe for x64"
+          dir src
           cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib resource.res /link /OUT:"chrome_inject_x64.exe"
           if not exist "chrome_inject_x64.exe" (
             echo "Error: chrome_inject_x64.exe not found!"
             dir .
             exit 1
           )
+          dir chrome_inject_x64.exe
           echo "chrome_inject.exe compilation finished"
 
       - name: Create Artifacts Directory
@@ -76,6 +89,7 @@ jobs:
         shell: cmd
         run: |
           move "chrome_inject_x64.exe" staging\
+          dir staging
           echo "Moved chrome_inject_x64.exe to staging"
 
       - name: Upload build artifacts (x64)
@@ -134,7 +148,7 @@ jobs:
           body: |
             Automated release for version ${{ github.ref_name }}.
             Contains x64 binary:
-            - chrome_inject_x64.exe with embedded chrome_decrypt.dll
+            - chrome_inject_x64.exe with embedded chrome_decrypt_x64.dll
           draft: false
           prerelease: false
           files: |
