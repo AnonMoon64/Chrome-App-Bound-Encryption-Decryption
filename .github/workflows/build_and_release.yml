@@ -49,7 +49,7 @@ jobs:
         shell: cmd
         run: |
           echo "Compiling chrome_inject.exe for x64"
-          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib tlhelp32.lib resource.res /link /OUT:"chrome_inject_x64.exe"
+          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib resource.res /link /OUT:"chrome_inject_x64.exe"
           echo "chrome_inject.exe compilation finished"
 
       - name: Create Artifacts Directory
