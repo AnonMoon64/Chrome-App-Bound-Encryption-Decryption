@@ -1,3 +1,7 @@
+// chrome_inject.cpp
+// v0.10.0 (c) Alexander 'xaitax' Hagenah
+// Licensed under the MIT License.
+
 #include <Windows.h>
 #include <tlhelp32.h>
 #include <fstream>
@@ -312,7 +316,6 @@ std::optional<DWORD> GetProcessIdByName(const std::wstring &procName)
 
 std::vector<BYTE> GetPayloadDllData()
 {
-    // Load DLL from resource
     HRSRC hRes = FindResourceA(NULL, MAKEINTRESOURCEA(IDR_DLL), "BINARY");
     if (!hRes) {
         debug("GetPayloadDllData: FindResourceA failed. Error: " + std::to_string(GetLastError()));
@@ -332,7 +335,6 @@ std::vector<BYTE> GetPayloadDllData()
         return {};
     }
 
-    // Return raw DLL data without encryption
     std::vector<BYTE> dllBuffer(dllData, dllData + dllSize);
     debug("GetPayloadDllData: Loaded DLL from resource. Size: " + std::to_string(dllSize) + " bytes");
     return dllBuffer;
@@ -533,7 +535,8 @@ struct BrowserDetails
 const std::map<std::wstring, BrowserDetails> browserConfigMap = {
     {L"chrome", {L"chrome.exe", L"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"}},
     {L"brave", {L"brave.exe", L"C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"}},
-    {L"edge", {L"msedge.exe", L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"}}};
+    {L"edge", {L"msedge.exe", L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"}}
+};
 
 bool StartBrowserAndWait(const std::wstring &exePath, DWORD &outPid)
 {
@@ -747,7 +750,6 @@ int wmain(int argc, wchar_t *argv[])
     if (!CheckArchMatch(targetProcessHandle.get()))
         return 1;
 
-    // Load DLL from resource
     std::vector<BYTE> dllBuffer = GetPayloadDllData();
     if (dllBuffer.empty())
     {
