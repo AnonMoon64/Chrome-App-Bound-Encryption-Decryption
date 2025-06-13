@@ -61,7 +61,7 @@ jobs:
         shell: cmd
         run: |
           echo "Compiling chrome_inject.exe for ${{ matrix.architecture }}"
-          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib resource.res /link /OUT:"${{ matrix.final_injector_name }}"
+          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib tlhelp32.lib resource.res /link /OUT:"${{ matrix.final_injector_name }}"
           echo "chrome_inject.exe compilation finished"
 
       - name: Create Artifacts Directory
