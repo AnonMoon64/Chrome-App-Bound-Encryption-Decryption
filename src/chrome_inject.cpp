@@ -24,7 +24,6 @@
 
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "version.lib")
-#pragma comment(lib, "tlhelp32.lib")
 
 const WCHAR *COMPLETION_EVENT_NAME_INJECTOR = L"Global\\ChromeDecryptWorkDoneEvent";
 const char *SESSION_CONFIG_FILE_NAME_INJECTOR = "chrome_decrypt_session.cfg";
