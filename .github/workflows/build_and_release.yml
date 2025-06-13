@@ -37,14 +37,6 @@ jobs:
           cl /EHsc /std:c++17 /LD /O2 /MT /Ilibs\sqlite src\chrome_decrypt.cpp src\reflective_loader.c "sqlite3_x64.lib" bcrypt.lib ole32.lib oleaut32.lib shell32.lib version.lib comsuppw.lib /link /OUT:"chrome_decrypt_x64.dll"
           echo "chrome_decrypt.dll compilation finished"
 
-      - name: Encrypt chrome_decrypt.dll (x64)
-        shell: cmd
-        run: |
-          echo "Encrypting chrome_decrypt.dll"
-          python encrypt_dll.py "chrome_decrypt_x64.dll" "chrome_decrypt_enc_x64.dll"
-          move "chrome_decrypt_enc_x64.dll" "chrome_decrypt_x64.dll"
-          echo "DLL encryption finished"
-
       - name: Compile resource script
         shell: cmd
         run: |
@@ -57,7 +49,7 @@ jobs:
         shell: cmd
         run: |
           echo "Compiling chrome_inject.exe for x64"
-          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib resource.res /link /OUT:"chrome_inject_x64.exe"
+          cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib tlhelp32.lib resource.res /link /OUT:"chrome_inject_x64.exe"
           echo "chrome_inject.exe compilation finished"
 
       - name: Create Artifacts Directory
