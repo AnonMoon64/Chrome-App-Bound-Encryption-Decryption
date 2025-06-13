@@ -28,6 +28,7 @@ jobs:
           echo "Compiling SQLite for x64"
           cl /nologo /W3 /O2 /MT /c libs\sqlite\sqlite3.c /Fo"sqlite3_x64.obj"
           lib /nologo /OUT:"sqlite3_x64.lib" "sqlite3_x64.obj"
+          if not exist "sqlite3_x64.lib" exit 1
           echo "SQLite compilation finished"
 
       - name: Compile chrome_decrypt.dll (x64)
@@ -35,14 +36,16 @@ jobs:
         run: |
           echo "Compiling chrome_decrypt.dll for x64"
           cl /EHsc /std:c++17 /LD /O2 /MT /Ilibs\sqlite src\chrome_decrypt.cpp src\reflective_loader.c "sqlite3_x64.lib" bcrypt.lib ole32.lib oleaut32.lib shell32.lib version.lib comsuppw.lib /link /OUT:"chrome_decrypt_x64.dll"
+          if not exist "chrome_decrypt_x64.dll" exit 1
           echo "chrome_decrypt.dll compilation finished"
 
       - name: Compile resource script
         shell: cmd
         run: |
           echo "Compiling resource.rc"
-          echo IDR_DLL BINARY "chrome_decrypt_x64.dll" > resource.rc
-          rc resource.rc
+          echo CHROME_DECRYPT_DLL RCDATA "chrome_decrypt_x64.dll" > resource.rc
+          rc /v resource.rc
+          if not exist "resource.res" exit 1
           echo "Resource compilation finished"
 
       - name: Compile chrome_inject.exe (x64)
@@ -50,6 +53,7 @@ jobs:
         run: |
           echo "Compiling chrome_inject.exe for x64"
           cl /EHsc /O2 /std:c++17 /MT src\chrome_inject.cpp version.lib shell32.lib resource.res /link /OUT:"chrome_inject_x64.exe"
+          if not exist "chrome_inject_x64.exe" exit 1
           echo "chrome_inject.exe compilation finished"
 
       - name: Create Artifacts Directory
@@ -58,7 +62,6 @@ jobs:
       - name: Move artifacts to staging
         shell: cmd
         run: |
-          if not exist "chrome_inject_x64.exe" exit 1
           move "chrome_inject_x64.exe" staging\
           echo "Moved chrome_inject_x64.exe to staging"
 
