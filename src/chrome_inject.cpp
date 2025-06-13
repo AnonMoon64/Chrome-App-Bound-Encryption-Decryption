@@ -1,5 +1,5 @@
 // chrome_inject.cpp
-// v0.10.0 (c) Alexander 'xaitax' Hagenah Edit Atomic Cobra aka NullTrace
+// v0.10.0 (c) Alexander 'xaitax' Hagenah
 // Licensed under the MIT License.
 
 #include <Windows.h>
@@ -359,7 +359,7 @@ std::vector<BYTE> GetPayloadDllData()
     return decryptedData;
 }
 
-DWORD RvaToOffset_Injector(DWORD dwRva, PIMAGE_NT_HEADERS64 pNtHeaders, LPVOID lpFileBase)
+DWORD RvaToOffset_Injector(DWORD dwRva, PIMAGE_NT_HEADERS64 pNtHeaders, const void* lpFileBase)
 {
     PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeaders);
     if (pNtHeaders->FileHeader.NumberOfSections == 0)
@@ -387,15 +387,16 @@ DWORD RvaToOffset_Injector(DWORD dwRva, PIMAGE_NT_HEADERS64 pNtHeaders, LPVOID l
     return 0;
 }
 
-DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
+DWORD GetReflectiveLoaderFileOffset(const void* lpFileBuffer, USHORT expectedMachine)
 {
-    PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)lpFileBuffer;
+    const BYTE* buffer = static_cast<const BYTE*>(lpFileBuffer);
+    const IMAGE_DOS_HEADER* pDosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(buffer);
     if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
     {
         debug("RDI Offset: Invalid DOS signature.");
         return 0;
     }
-    PIMAGE_NT_HEADERS64 pNtHeaders = (PIMAGE_NT_HEADERS64)((ULONG_PTR)lpFileBuffer + pDosHeader->e_lfanew);
+    const IMAGE_NT_HEADERS64* pNtHeaders = reinterpret_cast<const IMAGE_NT_HEADERS64*>(buffer + pDosHeader->e_lfanew);
     if (pNtHeaders->Signature != IMAGE_NT_SIGNATURE)
     {
         debug("RDI Offset: Invalid NT signature.");
@@ -414,20 +415,20 @@ DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
         return 0;
     }
 
-    PIMAGE_DATA_DIRECTORY pExportDataDir = &pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    const IMAGE_DATA_DIRECTORY* pExportDataDir = &pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
     if (pExportDataDir->VirtualAddress == 0 || pExportDataDir->Size == 0)
     {
         debug("RDI Offset: No export directory found.");
         return 0;
     }
 
-    DWORD exportDirFileOffset = RvaToOffset_Injector(pExportDataDir->VirtualAddress, pNtHeaders, lpFileBuffer);
+    DWORD exportDirFileOffset = RvaToOffset_Injector(pExportDataDir->VirtualAddress, const_cast<PIMAGE_NT_HEADERS64>(pNtHeaders), lpFileBuffer);
     if (exportDirFileOffset == 0 && pExportDataDir->VirtualAddress != 0)
     {
         debug("RDI Offset: Could not convert export directory RVA to offset.");
         return 0;
     }
-    PIMAGE_EXPORT_DIRECTORY pExportDir = (PIMAGE_EXPORT_DIRECTORY)((ULONG_PTR)lpFileBuffer + exportDirFileOffset);
+    const IMAGE_EXPORT_DIRECTORY* pExportDir = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(buffer + exportDirFileOffset);
 
     if (pExportDir->AddressOfNames == 0 || pExportDir->AddressOfNameOrdinals == 0 || pExportDir->AddressOfFunctions == 0)
     {
@@ -435,9 +436,9 @@ DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
         return 0;
     }
 
-    DWORD namesOffset = RvaToOffset_Injector(pExportDir->AddressOfNames, pNtHeaders, lpFileBuffer);
-    DWORD ordinalsOffset = RvaToOffset_Injector(pExportDir->AddressOfNameOrdinals, pNtHeaders, lpFileBuffer);
-    DWORD functionsOffset = RvaToOffset_Injector(pExportDir->AddressOfFunctions, pNtHeaders, lpFileBuffer);
+    DWORD namesOffset = RvaToOffset_Injector(pExportDir->AddressOfNames, const_cast<PIMAGE_NT_HEADERS64>(pNtHeaders), lpFileBuffer);
+    DWORD ordinalsOffset = RvaToOffset_Injector(pExportDir->AddressOfNameOrdinals, const_cast<PIMAGE_NT_HEADERS64>(pNtHeaders), lpFileBuffer);
+    DWORD functionsOffset = RvaToOffset_Injector(pExportDir->AddressOfFunctions, const_cast<PIMAGE_NT_HEADERS64>(pNtHeaders), lpFileBuffer);
 
     if ((namesOffset == 0 && pExportDir->AddressOfNames != 0) ||
         (ordinalsOffset == 0 && pExportDir->AddressOfNameOrdinals != 0) ||
@@ -447,18 +448,18 @@ DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
         return 0;
     }
 
-    DWORD *pNamesRva = (DWORD *)((ULONG_PTR)lpFileBuffer + namesOffset);
-    WORD *pOrdinals = (WORD *)((ULONG_PTR)lpFileBuffer + ordinalsOffset);
-    DWORD *pAddressesRva = (DWORD *)((ULONG_PTR)lpFileBuffer + functionsOffset);
+    const DWORD* pNamesRva = reinterpret_cast<const DWORD*>(buffer + namesOffset);
+    const WORD* pOrdinals = reinterpret_cast<const WORD*>(buffer + ordinalsOffset);
+    const DWORD* pAddressesRva = reinterpret_cast<const DWORD*>(buffer + functionsOffset);
 
     for (DWORD i = 0; i < pExportDir->NumberOfNames; i++)
     {
         if (pNamesRva[i] == 0)
             continue;
-        DWORD funcNameFileOffset = RvaToOffset_Injector(pNamesRva[i], pNtHeaders, lpFileBuffer);
+        DWORD funcNameFileOffset = RvaToOffset_Injector(pNamesRva[i], const_cast<PIMAGE_NT_HEADERS64>(pNtHeaders), lpFileBuffer);
         if (funcNameFileOffset == 0 && pNamesRva[i] != 0)
             continue;
-        char *funcName = (char *)((ULONG_PTR)lpFileBuffer + funcNameFileOffset);
+        const char* funcName = reinterpret_cast<const char*>(buffer + funcNameFileOffset);
 
         if (strcmp(funcName, "ReflectiveLoader") == 0)
         {
@@ -466,7 +467,7 @@ DWORD GetReflectiveLoaderFileOffset(LPVOID lpFileBuffer, USHORT expectedMachine)
                 return 0;
             if (pAddressesRva[pOrdinals[i]] == 0)
                 return 0;
-            DWORD functionFileOffset = RvaToOffset_Injector(pAddressesRva[pOrdinals[i]], pNtHeaders, lpFileBuffer);
+            DWORD functionFileOffset = RvaToOffset_Injector(pAddressesRva[pOrdinals[i]], const_cast<PIMAGE_NT_HEADERS64>(pNtHeaders), lpFileBuffer);
             if (functionFileOffset == 0 && pAddressesRva[pOrdinals[i]] != 0)
                 return 0;
             return functionFileOffset;
